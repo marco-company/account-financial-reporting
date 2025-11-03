@@ -319,12 +319,6 @@ msgstr "Todos los asientos publicados"
 
 #. module: account_financial_report
 #. odoo-python
-#: model:ir.model.fields,field_description:account_financial_report.field_aged_partner_balance_report_wizard__all_analytic
-#: model:ir.model.fields,field_description:account_financial_report.field_open_items_report_wizard__all_analytic
-msgid "All analytic items"
-msgstr "Todos los apuntes analíticos"
-
-#. module: account_financial_report
 #: code:addons/account_financial_report/report/aged_partner_balance_xlsx.py:0
 #: code:addons/account_financial_report/report/general_ledger_xlsx.py:0
 #: code:addons/account_financial_report/report/open_items_xlsx.py:0
@@ -2153,3 +2147,6 @@ msgstr "o"
 #: model_terms:ir.ui.view,arch_db:account_financial_report.report_journal_ledger_journal
 msgid "to"
 msgstr "a"
+
+#~ msgid "All analytic items"
+#~ msgstr "Todos los apuntes analíticos"
