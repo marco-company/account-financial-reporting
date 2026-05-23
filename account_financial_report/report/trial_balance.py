@@ -362,13 +362,16 @@ class TrialBalanceReport(models.AbstractModel):
                 total_amount, tb, acc_id, prt_id, foreign_currency
             )
         # sort on partner_name
+        # total_amount is a dictionary by account id that contains direct totalized
+        # values for that account (credit, debit, balance...), but also other integer
+        # keys that represents partner ids with the detail of each of them, and one
+        # of the partner id keys is 0 for those with no partner
         for acc_id, total_data in total_amount.items():
             tmp_list = sorted(
                 total_data.items(),
-                key=lambda x: isinstance(x[0], int)
-                and isinstance(x[1], dict)
-                and x[1]["partner_name"]
-                or x[0],
+                key=lambda x: ("\xff" if not x[0] else x[1]["partner_name"])
+                if isinstance(x[0], int)
+                else "!",  # ~ is the last ASCII printable char, and ! the first
             )
             total_amount[acc_id] = {}
             for key, value in tmp_list:
@@ -861,6 +864,7 @@ class TrialBalanceReport(models.AbstractModel):
         return groups_data
 
     def _get_report_values(self, docids, data):
+        res = super()._get_report_values(docids, data)
         show_partner_details = data["show_partner_details"]
         wizard_id = data["wizard_id"]
         company = self.env["res.company"].browse(data["company_id"])
@@ -955,29 +959,32 @@ class TrialBalanceReport(models.AbstractModel):
                     total_amount[account_id]["currency_name"] = accounts_data[
                         account_id
                     ]["currency_name"]
-        return {
-            "doc_ids": [wizard_id],
-            "doc_model": "trial.balance.report.wizard",
-            "docs": self.env["trial.balance.report.wizard"].browse(wizard_id),
-            "foreign_currency": data["foreign_currency"],
-            "company_name": company.display_name,
-            "company_currency": company.currency_id,
-            "currency_name": company.currency_id.name,
-            "date_from": data["date_from"],
-            "date_to": data["date_to"],
-            "only_posted_moves": data["only_posted_moves"],
-            "hide_account_at_0": data["hide_account_at_0"],
-            "show_partner_details": data["show_partner_details"],
-            "limit_hierarchy_level": data["limit_hierarchy_level"],
-            "show_hierarchy": show_hierarchy,
-            "hide_parent_hierarchy_level": data["hide_parent_hierarchy_level"],
-            "trial_balance": trial_balance,
-            "trial_balance_grouped": trial_balance_grouped,
-            "total_amount": total_amount,
-            "total_amount_grouped": total_amount_grouped,
-            "accounts_data": accounts_data,
-            "partners_data": partners_data,
-            "show_hierarchy_level": show_hierarchy_level,
-            "currency_model": self.env["res.currency"],
-            "grouped_by": grouped_by,
-        }
+        res.update(
+            {
+                "doc_ids": [wizard_id],
+                "doc_model": "trial.balance.report.wizard",
+                "docs": self.env["trial.balance.report.wizard"].browse(wizard_id),
+                "foreign_currency": data["foreign_currency"],
+                "company_name": company.display_name,
+                "company_currency": company.currency_id,
+                "currency_name": company.currency_id.name,
+                "date_from": data["date_from"],
+                "date_to": data["date_to"],
+                "only_posted_moves": data["only_posted_moves"],
+                "hide_account_at_0": data["hide_account_at_0"],
+                "show_partner_details": data["show_partner_details"],
+                "limit_hierarchy_level": data["limit_hierarchy_level"],
+                "show_hierarchy": show_hierarchy,
+                "hide_parent_hierarchy_level": data["hide_parent_hierarchy_level"],
+                "trial_balance": trial_balance,
+                "trial_balance_grouped": trial_balance_grouped,
+                "total_amount": total_amount,
+                "total_amount_grouped": total_amount_grouped,
+                "accounts_data": accounts_data,
+                "partners_data": partners_data,
+                "show_hierarchy_level": show_hierarchy_level,
+                "currency_model": self.env["res.currency"],
+                "grouped_by": grouped_by,
+            }
+        )
+        return res

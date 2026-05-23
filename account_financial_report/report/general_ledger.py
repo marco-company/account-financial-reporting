@@ -60,6 +60,9 @@ class GeneralLedgerReport(models.AbstractModel):
         ]
 
     def _get_acc_prt_accounts_ids(self, company_id, grouped_by):
+        # In non-grouped mode, lines must stay at account level.
+        if grouped_by == "none":
+            return []
         accounts_domain = [
             ("company_id", "=", company_id),
         ] + self._get_account_type_domain(grouped_by)
@@ -80,7 +83,7 @@ class GeneralLedgerReport(models.AbstractModel):
         domain += [("date", "<", date_from)]
         accounts = self.env["account.account"].search(accounts_domain)
         domain += [("account_id", "in", accounts.ids)]
-        if acc_prt:
+        if acc_prt and grouped_by != "none":
             domain += self._get_account_type_domain(grouped_by)
         return domain
 
@@ -163,7 +166,27 @@ class GeneralLedgerReport(models.AbstractModel):
         initial_domain_pl = self._get_initial_balances_pl_ml_domain(
             account_ids, company_id, date_from, fy_start_date, base_domain
         )
-        return self._get_accounts_initial_balance(initial_domain_bs, initial_domain_pl)
+        gl_initial_acc = self._get_accounts_initial_balance(
+            initial_domain_bs, initial_domain_pl
+        )
+        if grouped_by != "none":
+            return gl_initial_acc
+        # If grouped_by none we add balance
+        domain = list(base_domain) + [("date", "<", date_from)]
+        if account_ids:
+            domain += [("account_id", "in", account_ids)]
+        rows = self.env["account.move.line"].read_group(
+            domain=domain,
+            fields=["account_id", "debit", "credit", "balance", "amount_currency:sum"],
+            groupby=["account_id"],
+        )
+        covered_ids = {
+            row["account_id"][0] for row in gl_initial_acc if row.get("account_id")
+        }
+        for row in rows:
+            if row.get("account_id") and row["account_id"][0] not in covered_ids:
+                gl_initial_acc.append(row)
+        return gl_initial_acc
 
     def _prepare_gen_ld_data_item(self, gl):
         res = {}
@@ -171,7 +194,7 @@ class GeneralLedgerReport(models.AbstractModel):
             res[key_bal] = {}
             for key_field in ["credit", "debit", "balance", "bal_curr"]:
                 field_name = key_field if key_field != "bal_curr" else "amount_currency"
-                res[key_bal][key_field] = gl[field_name]
+                res[key_bal][key_field] = gl.get(field_name, 0.0)
         return res
 
     def _prepare_gen_ld_data(self, gl_initial_acc, domain, grouped_by):
@@ -376,7 +399,6 @@ class GeneralLedgerReport(models.AbstractModel):
             domain += [("move_id.state", "=", "posted")]
         else:
             domain += [("move_id.state", "in", ["posted", "draft"])]
-
         if cost_center_ids:
             domain += [("analytic_account_ids", "in", cost_center_ids)]
         return domain
@@ -749,6 +771,7 @@ class GeneralLedgerReport(models.AbstractModel):
 
     # flake8: noqa: C901
     def _get_report_values(self, docids, data):
+        res = super()._get_report_values(docids, data)
         wizard_id = data["wizard_id"]
         company = self.env["res.company"].browse(data["company_id"])
         company_id = data["company_id"]
@@ -877,29 +900,32 @@ class GeneralLedgerReport(models.AbstractModel):
             if not gl_item["currency_id"] and len(fin_bal_currency_ids) == 1:
                 fin_bal_currency_id = fin_bal_currency_ids[0]
             gl_item["fin_bal_currency_id"] = fin_bal_currency_id
-        return {
-            "doc_ids": [wizard_id],
-            "doc_model": "general.ledger.report.wizard",
-            "docs": self.env["general.ledger.report.wizard"].browse(wizard_id),
-            "foreign_currency": data["foreign_currency"],
-            "company_name": company.display_name,
-            "company_currency": company.currency_id,
-            "currency_name": company.currency_id.name,
-            "date_from": data["date_from"],
-            "date_to": data["date_to"],
-            "only_posted_moves": data["only_posted_moves"],
-            "hide_account_at_0": data["hide_account_at_0"],
-            "show_cost_center": data["show_cost_center"],
-            "general_ledger": general_ledger,
-            "accounts_data": accounts_data,
-            "journals_data": journals_data,
-            "full_reconcile_data": full_reconcile_data,
-            "taxes_data": taxes_data,
-            "centralize": centralize,
-            "analytic_data": analytic_data,
-            "filter_partner_ids": True if partner_ids else False,
-            "currency_model": self.env["res.currency"],
-        }
+        res.update(
+            {
+                "doc_ids": [wizard_id],
+                "doc_model": "general.ledger.report.wizard",
+                "docs": self.env["general.ledger.report.wizard"].browse(wizard_id),
+                "foreign_currency": data["foreign_currency"],
+                "company_name": company.display_name,
+                "company_currency": company.currency_id,
+                "currency_name": company.currency_id.name,
+                "date_from": data["date_from"],
+                "date_to": data["date_to"],
+                "only_posted_moves": data["only_posted_moves"],
+                "hide_account_at_0": data["hide_account_at_0"],
+                "show_cost_center": data["show_cost_center"],
+                "general_ledger": general_ledger,
+                "accounts_data": accounts_data,
+                "journals_data": journals_data,
+                "full_reconcile_data": full_reconcile_data,
+                "taxes_data": taxes_data,
+                "centralize": centralize,
+                "analytic_data": analytic_data,
+                "filter_partner_ids": True if partner_ids else False,
+                "currency_model": self.env["res.currency"],
+            }
+        )
+        return res
 
     def _get_ml_fields(self):
         return self.COMMON_ML_FIELDS + [
